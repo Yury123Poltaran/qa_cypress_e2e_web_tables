@@ -1,10 +1,11 @@
 /* eslint-disable cypress/unsafe-to-chain-command */
 // cypress/e2e/webTables.cy.js
 
-// Игнорируем ошибки сторонних скриптов, чтобы не падал beforeEach
+// Игнорим ошибки сторонних скриптов (баннеры и т.п.)
 Cypress.on('uncaught:exception', () => false);
 
 describe('Web Tables', () => {
+  // -------- helpers --------
   const makeUser = () => {
     const t = `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
     return {
@@ -13,7 +14,7 @@ describe('Web Tables', () => {
       email: `ivan.${t}@mail.com`,
       age: '36',
       salary: '1200',
-      dept: 'QA',
+      dept: 'QA'
     };
   };
 
@@ -28,42 +29,73 @@ describe('Web Tables', () => {
     cy.get('#submit').click();
   };
 
+  const aliasRowByEmail = (email) => {
+    cy.get('.rt-tbody')
+      .contains('.rt-tr-group', email)
+      .then(($row) => {
+        cy.wrap($row).as('row');
+      });
+  };
+
+  // -------- hooks --------
   beforeEach(() => {
+    // baseUrl задан в cypress.config.js
     cy.visit('/webtables');
     cy.get('#searchBox').should('be.visible').clear();
     cy.get('#addNewRecordButton').should('be.visible');
   });
 
+  // -------- tests --------
   it('Pagination (real switch & assert page number)', function () {
-    for (let i = 0; i < 12; i += 1) addUser(makeUser());
+    // создаём достаточно записей для 2+ страниц
+    for (let i = 0; i < 12; i += 1) {
+      addUser(makeUser());
+    }
 
+    // если пагинации нет — корректно скипаем
     cy.get('body').then(($b) => {
-      const hasPagination = $b.find('.-pagination, .-next .-btn').length > 0;
-      if (!hasPagination) this.skip();
+      const has = $b.find('.-pagination, .-next .-btn').length > 0;
+      if (!has) this.skip();
     });
 
-    // Находим инпут номера страницы внутри блока пагинации
-    cy.get('.-pagination').scrollIntoView()
-      .find('input').filter(':visible').first()
-      .then(($el) => { cy.wrap($el).as('pageInput'); });
+    // всегда запрашиваем input заново (после клика DOM меняется)
+    const pageInput = () =>
+      cy.get('.-pagination')
+        .scrollIntoView()
+        .find('input')
+        .filter(':visible')
+        .first();
 
-    cy.get('@pageInput').should('exist');
-    cy.get('@pageInput').should('have.value', '1');
+    pageInput().should('exist').and('have.value', '1');
 
-    cy.get('.-next .-btn').click();
-    cy.get('@pageInput').should('have.value', '2');
+    cy.get('.-next .-btn')
+      .scrollIntoView()
+      .should('be.visible')
+      .should('not.be.disabled')
+      .click();
 
-    cy.get('.-previous .-btn').click();
-    cy.get('@pageInput').should('have.value', '1');
+    pageInput().should('have.value', '2');
+
+    cy.get('.-previous .-btn')
+      .scrollIntoView()
+      .should('be.visible')
+      .should('not.be.disabled')
+      .click();
+
+    pageInput().should('have.value', '1');
   });
 
   it('Rows count selection changes number of visible rows', function () {
+    // если селектора нет — корректно скипаем
     cy.get('body').then(($b) => {
-      const hasSelect = $b.find('select, .rows-per-page, .page-size').length > 0;
+      const sel = 'select, .rows-per-page, .page-size';
+      const hasSelect = $b.find(sel).length > 0;
       if (!hasSelect) this.skip();
     });
 
-    for (let i = 0; i < 8; i += 1) addUser(makeUser());
+    for (let i = 0; i < 8; i += 1) {
+      addUser(makeUser());
+    }
 
     cy.get('select').first().select('5');
     cy.get('.rt-tbody .rt-tr-group:visible').should('have.length', 5);
@@ -74,9 +106,7 @@ describe('Web Tables', () => {
     addUser(u);
 
     cy.get('#searchBox').type(u.email);
-    cy.get('.rt-tbody')
-      .contains('.rt-tr-group', u.email)
-      .then(($row) => { cy.wrap($row).as('row'); });
+    aliasRowByEmail(u.email);
 
     cy.get('@row').should('contain', u.first);
     cy.get('@row').should('contain', u.last);
@@ -95,12 +125,14 @@ describe('Web Tables', () => {
   it('Delete all workers', () => {
     const remove = () => {
       cy.get('body').then(($b) => {
-        if ($b.find('[id^="delete-record-"]').length) {
+        const has = $b.find('[id^="delete-record-"]').length > 0;
+        if (has) {
           cy.get('[id^="delete-record-"]').first().click();
           remove();
         }
       });
     };
+
     remove();
     cy.get('.rt-noData').should('contain', 'No rows found');
   });
@@ -118,9 +150,7 @@ describe('Web Tables', () => {
     cy.get('#submit').click();
 
     cy.get('#searchBox').clear().type(u.email);
-    cy.get('.rt-tbody')
-      .contains('.rt-tr-group', u.email)
-      .then(($row) => { cy.wrap($row).as('row'); });
+    aliasRowByEmail(u.email);
 
     cy.get('@row').should('contain', upd.dept);
     cy.get('@row').should('contain', upd.salary);
@@ -140,9 +170,7 @@ describe('Web Tables', () => {
     cy.get('#submit').click();
 
     cy.get('#searchBox').clear().type(u.email);
-    cy.get('.rt-tbody')
-      .contains('.rt-tr-group', u.email)
-      .then(($row) => { cy.wrap($row).as('row'); });
+    aliasRowByEmail(u.email);
 
     cy.get('@row').should('contain', after.first);
     cy.get('@row').should('contain', after.last);
