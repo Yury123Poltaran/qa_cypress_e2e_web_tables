@@ -1,10 +1,10 @@
+/* eslint-disable cypress/unsafe-to-chain-command */
 // cypress/e2e/webTables.cy.js
 
-// 1) игнорим ошибки чужих скриптов (реклама и т.п.), чтобы не падал beforeEach
+// Игнорируем ошибки сторонних скриптов, чтобы не падал beforeEach
 Cypress.on('uncaught:exception', () => false);
 
 describe('Web Tables', () => {
-  // фабрика данных
   const makeUser = () => {
     const t = `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
     return {
@@ -17,7 +17,6 @@ describe('Web Tables', () => {
     };
   };
 
-  // общая функция добавления пользователя
   const addUser = (u) => {
     cy.get('#addNewRecordButton').click();
     cy.get('#firstName').clear().type(u.first);
@@ -30,47 +29,41 @@ describe('Web Tables', () => {
   };
 
   beforeEach(() => {
-    // baseUrl = https://demoqa.com (в cypress.config.js)
     cy.visit('/webtables');
-    // «якоря» загрузки страницы
     cy.get('#searchBox').should('be.visible').clear();
     cy.get('#addNewRecordButton').should('be.visible');
   });
 
   it('Pagination (real switch & assert page number)', function () {
-    // добавляем достаточно записей, чтобы была 2+ страниц
-    for (let i = 0; i < 12; i++) addUser(makeUser());
+    for (let i = 0; i < 12; i += 1) addUser(makeUser());
 
-    // условный skip через then(), чтобы избежать гонок
     cy.get('body').then(($b) => {
       const hasPagination = $b.find('.-pagination, .-next .-btn').length > 0;
       if (!hasPagination) this.skip();
     });
 
-    // помощник: поле номера страницы внутри блока пагинации
-    const pageInput = () =>
-      cy.get('.-pagination')
-        .scrollIntoView()
-        .find('input')
-        .filter(':visible')
-        .first();
+    // Находим инпут номера страницы внутри блока пагинации
+    cy.get('.-pagination').scrollIntoView()
+      .find('input').filter(':visible').first()
+      .then(($el) => { cy.wrap($el).as('pageInput'); });
 
-    pageInput().should('exist').and('have.value', '1');
+    cy.get('@pageInput').should('exist');
+    cy.get('@pageInput').should('have.value', '1');
+
     cy.get('.-next .-btn').click();
-    pageInput().should('have.value', '2');
+    cy.get('@pageInput').should('have.value', '2');
+
     cy.get('.-previous .-btn').click();
-    pageInput().should('have.value', '1');
+    cy.get('@pageInput').should('have.value', '1');
   });
 
   it('Rows count selection changes number of visible rows', function () {
-    // если селекта нет — корректно скипаем
     cy.get('body').then(($b) => {
       const hasSelect = $b.find('select, .rows-per-page, .page-size').length > 0;
       if (!hasSelect) this.skip();
     });
 
-    // на всякий — заполняем таблицу
-    for (let i = 0; i < 8; i++) addUser(makeUser());
+    for (let i = 0; i < 8; i += 1) addUser(makeUser());
 
     cy.get('select').first().select('5');
     cy.get('.rt-tbody .rt-tr-group:visible').should('have.length', 5);
@@ -80,13 +73,14 @@ describe('Web Tables', () => {
     const u = makeUser();
     addUser(u);
 
-    // проверяем именно строку по уникальному email
     cy.get('#searchBox').type(u.email);
     cy.get('.rt-tbody')
       .contains('.rt-tr-group', u.email)
-      .should('contain', u.first)
-      .and('contain', u.last)
-      .and('contain', u.dept);
+      .then(($row) => { cy.wrap($row).as('row'); });
+
+    cy.get('@row').should('contain', u.first);
+    cy.get('@row').should('contain', u.last);
+    cy.get('@row').should('contain', u.dept);
   });
 
   it('Delete a worker', () => {
@@ -99,19 +93,19 @@ describe('Web Tables', () => {
   });
 
   it('Delete all workers', () => {
-    const deleteAll = () => {
+    const remove = () => {
       cy.get('body').then(($b) => {
         if ($b.find('[id^="delete-record-"]').length) {
           cy.get('[id^="delete-record-"]').first().click();
-          deleteAll();
+          remove();
         }
       });
     };
-    deleteAll();
+    remove();
     cy.get('.rt-noData').should('contain', 'No rows found');
   });
 
-  it('Find a worker in search and edit it (row-scoped assertions)', () => {
+  it('Find a worker in search and edit it (row-scoped)', () => {
     const u = makeUser();
     const upd = { dept: 'Automation', salary: '1500' };
 
@@ -126,11 +120,13 @@ describe('Web Tables', () => {
     cy.get('#searchBox').clear().type(u.email);
     cy.get('.rt-tbody')
       .contains('.rt-tr-group', u.email)
-      .should('contain', upd.dept)
-      .and('contain', upd.salary);
+      .then(($row) => { cy.wrap($row).as('row'); });
+
+    cy.get('@row').should('contain', upd.dept);
+    cy.get('@row').should('contain', upd.salary);
   });
 
-  it('Validate data in row after editing (row-scoped assertions)', () => {
+  it('Validate data in row after editing (row-scoped)', () => {
     const u = makeUser();
     const after = { first: 'Oleh', last: 'QA', dept: 'R&D' };
 
@@ -146,19 +142,23 @@ describe('Web Tables', () => {
     cy.get('#searchBox').clear().type(u.email);
     cy.get('.rt-tbody')
       .contains('.rt-tr-group', u.email)
-      .should('contain', after.first)
-      .and('contain', after.last)
-      .and('contain', after.dept);
+      .then(($row) => { cy.wrap($row).as('row'); });
+
+    cy.get('@row').should('contain', after.first);
+    cy.get('@row').should('contain', after.last);
+    cy.get('@row').should('contain', after.dept);
   });
 
-  it('Search by all column values (assert the actual query)', () => {
+  it('Search by all column values (assert actual query)', () => {
     const u = makeUser();
     addUser(u);
 
-    [u.first, u.last, u.email, u.age, u.salary, u.dept].forEach((q) => {
+    const queries = [u.first, u.last, u.email, u.age, u.salary, u.dept];
+
+    queries.forEach((q) => {
       cy.get('#searchBox').clear().type(q);
       cy.get('.rt-noData').should('not.exist');
-      cy.get('.rt-tbody').should('contain', q); // проверяем именно текущий поисковый термин
+      cy.get('.rt-tbody').should('contain', q);
     });
   });
 });
